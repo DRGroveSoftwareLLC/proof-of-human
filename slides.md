@@ -6,14 +6,20 @@ paginate: true
 size: 16:9
 footer: '![height:28px](assets/dr-grove-logo.png)'
 style: |
+  section {
+      font-size: 2.5em !important;
+  }
+  footer {
+    text-align: left;
+  }
   footer img {
     filter: invert(1);
   }
   section.invert footer img {
     filter: none;
   }
-  section.compact {
-    font-size: 0.8em;
+  .compact {
+    font-size: 0.75em !important;
   }
 ---
 
@@ -52,7 +58,7 @@ Building a sovereign identity: from bare metal to Web of Trust
 
 - Software keys are copyable, stealable, silently exfiltrated
 - Centralized identity (CAs, platforms) can be compelled, hacked, or revoked out from under you
-- A **Web of Trust** is peer attestation — humans vouching for humans, in person
+- A **Web of Trust** — peer attestation instead of central authority (more shortly)
 - Hardware-backed + cross-signed = an identity that is *yours*, and that other humans have verified is yours
 
 ---
@@ -96,9 +102,11 @@ Building a sovereign identity: from bare metal to Web of Trust
 
 ---
 
-<!-- _class: compact invert -->
+<!-- _class: invert -->
 
 ## Glossary You'll Need Today
+
+<div class="compact">
 
 | Term | Meaning |
 |---|---|
@@ -106,6 +114,8 @@ Building a sovereign identity: from bare metal to Web of Trust
 | Subkeys (`S` `E` `A`) | Sign, Encrypt, Authenticate — your day-to-day operations |
 | Fingerprint | The 40-hex-character unique ID of a key |
 | UID | User ID — name / comment / email bound to a key |
+
+</div>
 
 ---
 
@@ -161,8 +171,9 @@ git submodule update --init --recursive
 make release
 ```
 
-- Builds inside Docker with `SOURCE_DATE_EPOCH=1` pinned — same inputs, same bytes, every time
-- Output: `dist/airgap.iso` + `dist/manifest.txt`
+Output: `dist/airgap.iso` + `dist/manifest.txt`
+
+<!-- Builds inside Docker with SOURCE_DATE_EPOCH=1 pinned — same inputs, same bytes, every time. This is what makes the reproducibility check on the next slide possible. -->
 
 ---
 
@@ -172,20 +183,9 @@ make release
 make reproduce
 ```
 
-- Rebuilds clean from scratch and diffs the new manifest against `dist/manifest.txt`
-- Match = what you built is provably the same as what's in source control — no hidden step
+Match = provably the same build as what's in source control.
 
----
-
-## (Optional) Sign & Verify Releases
-
-```sh
-make sign      # detached-sign dist/manifest.txt with your own OpenPGP key
-make verify    # verify others' signatures + the iso checksum
-```
-
-- Lets a group of builders independently confirm they all got the same ISO
-- This is how you stack trust without a single point of failure
+<!-- Rebuilds clean from scratch and diffs the new manifest against dist/manifest.txt. A match means no hidden step — what you built is what's in source control. -->
 
 ---
 
@@ -198,7 +198,7 @@ dd if=out/airgap.iso of=/dev/sdX bs=1M conv=sync status=progress
 
 **`/dev/sdX` is your drive.** Get this wrong and you destroy data. Triple-check with `lsblk` first.
 
-(GUI alternative: Balena Etcher / Rufus — same idea, more guardrails)
+<!-- GUI alternative if anyone doesn't want the CLI: Balena Etcher or Rufus — same idea, more guardrails. -->
 
 ---
 
@@ -209,20 +209,9 @@ sha256sum out/airgap.iso
 head -c $(stat -c '%s' out/airgap.iso) /dev/sdX | sha256sum
 ```
 
-Hashes must match — confirms the ISO landed on the drive byte-for-byte.
+Hashes must match.
 
----
-
-## Bonus: Attesting a Build (Heads / Coreboot hardware)
-
-On purpose-built firmware, boot to the recovery shell instead:
-
-```sh
-gpg --card-status                        # insert & check an OpenPGP smartcard
-gpg --armor --detach-sign airgap.iso     # sign the ISO onto an SD card
-```
-
-*A different SD card than your key-material backup later.* Optional, hardware-specific — skip on a normal laptop.
+<!-- Confirms the ISO landed on the drive byte-for-byte. -->
 
 ---
 
@@ -307,10 +296,12 @@ Tested hardware: Purism Librem 14, HP 14" Celeron, Lenovo Flex 5i — any normal
 
 ## Key Architecture
 
-- One **Certify (`C`)** key — the root; used only to add subkeys to your own key and to sign *other users' keys* (this is what Step 7 uses)
+- One **Certify (`C`)** key — the root; used only to add subkeys and to sign *other users' keys*
 - **Sign (`S`)** subkey — signs arbitrary data (files, commits, messages) to prove it came from you
 - **Encrypt (`E`) / Authenticate (`A`)** subkeys — the rest of what you use day to day
 - Derived via Ed25519 (signing) and Curve25519 (encryption)
+
+<!-- The Certify key's "sign other users' keys" capability is what Step 7 uses. -->
 
 ---
 
@@ -320,9 +311,9 @@ Tested hardware: Purism Librem 14, HP 14" Celeron, Lenovo Flex 5i — any normal
 keyfork mnemonic generate
 ```
 
-- Refuses to run unless the system is offline with an up-to-date kernel
-- *(Override for testing only:* `INSECURE_HARDWARE_ALLOWED=1`*)*
-- Can also draw entropy from playing cards, tarot cards, or dice instead of the OS RNG
+Refuses to run unless the system is offline with an up-to-date kernel.
+
+<!-- Override for testing only: INSECURE_HARDWARE_ALLOWED=1. Can also draw entropy from playing cards, tarot cards, or dice instead of the OS RNG. -->
 
 ---
 
@@ -347,27 +338,15 @@ Mnemonic + derived identity + hardware token + encrypted seed backup — one com
 
 ---
 
-## Breaking It Down: `--encrypt-to-self`
+## Breaking Down the One-Liner
 
-- Encrypts the newly generated seed to the OpenPGP key you just derived
-- Output: `encrypted.asc`
-- **This file is what goes on your SD card backup**
+- `--encrypt-to-self` → seed encrypted to your new key as `encrypted.asc` (→ SD card)
+- `--provision openpgp-card` → factory-resets the card, writes your subkeys to it (this *is* Step 4)
+- `--derive` → UID string; always derives `C` + `S` + `E` + `A`
 
----
-
-## Breaking It Down: `--provision openpgp-card`
-
-- Factory-resets whatever smart card is plugged in
-- Writes your derived Sign / Encrypt / Auth subkeys straight to it
-- This *is* Step 4 — keyfork writes the key to hardware for you, automatically
-
----
-
-## Breaking It Down: `--derive`
-
-- UID format: `"Full Name (optional comment) <email>"`
-- Any combination of name / username / email is valid
-- The `openpgp` format always derives `C` + `S` + `E` + `A`
+<!-- --encrypt-to-self: encrypts the newly generated seed to the OpenPGP key you just derived; encrypted.asc is what goes on the SD card backup.
+--provision openpgp-card: factory-resets whatever smart card is plugged in and writes your derived Sign/Encrypt/Auth subkeys straight to it — this is Step 4, keyfork does it automatically.
+--derive: UID format is "Full Name (optional comment) <email>" — any combination of name/username/email is valid; the openpgp format always derives C+S+E+A. -->
 
 ---
 
@@ -379,9 +358,9 @@ keyfork recover mnemonic
 keyfork derive openpgp "Your Name <you@email.co>"
 ```
 
-- `recover mnemonic` re-enters your mnemonic and starts a local keyfork agent
-- `derive openpgp` asks that agent for a fresh, deterministic OpenPGP cert
-- Same result as the one-liner — useful for understanding what's actually happening underneath
+Same result as the one-liner.
+
+<!-- recover mnemonic re-enters your mnemonic and starts a local keyfork agent; derive openpgp asks that agent for a fresh, deterministic OpenPGP cert. Useful for understanding what's actually happening underneath the one-liner. -->
 
 ---
 
@@ -396,8 +375,9 @@ This is your identity from here forward.
 ## Back Up to Your SD Card
 
 - Copy your mnemonic (on paper) **and** `encrypted.asc` to the SD card you were given
-- This is a *different* SD card purpose than the optional build-attestation flow from Step 1
 - If your hardware token is ever lost, stolen, or wiped — this backup is the only thing that matters
+
+<!-- This is a different SD card purpose than the optional build-attestation flow from Step 1 — worth flagging if anyone did that step. -->
 
 ---
 
@@ -416,11 +396,9 @@ This is your identity from here forward.
 
 ---
 
-## Why Hardware-Back It?
+## Already Hardware-Backed
 
-- Private key material never leaves the token
-- Malware on your daily driver can request a signature, but can never extract the key
-- Already done — `--provision openpgp-card` in Step 3 wrote your subkeys to the token
+`--provision openpgp-card` in Step 3 already wrote your subkeys to the token — the "why" is back in Concepts.
 
 ---
 
@@ -498,18 +476,13 @@ keyfork derive openpgp "Your Name <you@email.co>"
 
 Re-derives the exact same OpenPGP certificate from the same seed.
 
-<!-- Presenter note: confirm the current standalone card re-provisioning invocation
-     (`keyfork provision openpgp-card --help`) against the live binary before presenting —
-     docs describe the provisioner conceptually but the fresh-card-from-existing-derivation
-     porcelain command wasn't fully spelled out in the version reviewed for this deck. -->
-
 ---
 
 ## Why the Fingerprint Comes Back Identical
 
-- keyfork derives OpenPGP keys with a **fixed creation timestamp** (Unix epoch + 1)
-- Same seed + same fixed timestamp = **bit-for-bit identical key, every time**
-- Verify with `gpg --card-status` — compare the new fingerprint to your original
+Same seed → **bit-for-bit identical key, every time.**
+
+<!-- keyfork derives OpenPGP keys with a fixed creation timestamp (Unix epoch + 1), so identical seed + identical timestamp always produces an identical key. Verify by comparing the gpg --card-status fingerprint to the original. -->
 
 ---
 
@@ -540,7 +513,8 @@ Protect the backup, not the token.
 
 - Hagrid-based: **email-verified** UIDs only
 - Strips **third-party certifications** on upload — your signature on someone else's key won't survive an upload to this server
-- (Keep that in mind for Step 7)
+
+<!-- Keep that in mind for Step 7 — it's why you'll send signatures directly instead of uploading them. -->
 
 ---
 
@@ -646,8 +620,9 @@ Ideally performed from your Certify key, offline — the same posture as key gen
 gpg --export THEIR_FINGERPRINT | gpg --encrypt --armor -r THEIR_FINGERPRINT > sig-for-them.asc
 ```
 
-- keys.openpgp.org strips third-party certs on upload — so you send *your* signature directly, encrypted to *them*
-- They import it and can choose to publish/attach it themselves
+keys.openpgp.org strips third-party certs — so you send your signature directly, encrypted to them.
+
+<!-- They import it and can choose to publish/attach it themselves. -->
 
 ---
 
