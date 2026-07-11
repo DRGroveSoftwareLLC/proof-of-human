@@ -167,7 +167,6 @@ Building a sovereign identity: from bare metal to Web of Trust
 ```sh
 git clone https://git.distrust.co/public/airgap
 cd airgap
-git submodule update --init --recursive
 make release
 ```
 
@@ -471,7 +470,10 @@ Should show an empty card — no keys, no cardholder name.
 ```sh
 keyfork recover mnemonic
 # re-enter the same mnemonic from your SD card backup
+export KEYFORK_OPENPGP_EXPIRE=2y
 keyfork derive openpgp "Your Name <you@email.co>"
+gpg-connect-agent killagent /bye
+keyfork provision openpgp-card
 ```
 
 Re-derives the exact same OpenPGP certificate from the same seed.
@@ -490,14 +492,14 @@ Same seed → **bit-for-bit identical key, every time.**
 
 **The token is disposable. The seed is sovereign.**
 
-Protect the backup, not the token.
+Protect the mnemonic. Wipe keys or destroy secure element to prevent physical extraction from tokens
 
 ---
 
 <!-- _class: lead invert -->
 
 # Step 6
-## Upload to keys.openpgp.org
+## Upload to keyserver
 
 ---
 
@@ -551,6 +553,17 @@ gpg --locate-keys your@email.co
 ```
 
 Or search `https://keys.openpgp.org` directly by email or fingerprint.
+
+---
+
+<!-- _class: lead invert -->
+
+## Upload to Other Keyservers
+
+```sh
+gpg --keyserver hkps://keyserver.ubuntu.com --send-key YOUR_KEY_ID
+gpg --keyserver hkps://pgp.surf.nl --send-key YOUR_KEY_ID
+```
 
 ---
 
